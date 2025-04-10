@@ -1,13 +1,18 @@
 import { useCallback, useState } from "react";
 import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  DropResult,
-  DraggableProvided,
-  DraggableStateSnapshot,
-  DragStart,
-} from "react-beautiful-dnd";
+  DndContext,
+  DragOverlay,
+  useSensors,
+  useSensor,
+  PointerSensor,
+  KeyboardSensor,
+  closestCenter,
+  DragStartEvent,
+  DragEndEvent,
+  useDraggable,
+  useDroppable,
+} from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence } from "framer-motion";
 import { useTimetableStore } from "../../store";
 import { DAYS, PERIODS } from "../../constants";
@@ -23,8 +28,21 @@ const TimetableGrid = () => {
     validationErrors,
   } = useTimetableStore();
 
+  // Configure sensors for drag detection
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor)
+  );
+
   // State to track the currently dragged item for enhanced visual feedback
-  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeDragData, setActiveDragData] = useState<TimetableEntry | null>(
+    null
+  );
 
   // Helper to find subject and teacher for an entry
   const getEntryDetails = useCallback(
@@ -37,34 +55,41 @@ const TimetableGrid = () => {
   );
 
   // Handle drag start - track the dragged item
-  const handleDragStart = (result: DragStart) => {
-    setDraggedId(result.draggableId);
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    setActiveId(active.id as string);
+
+    // Find the entry being dragged
+    const draggedEntry = timetableEntries.find(
+      (entry) => entry.id === active.id
+    );
+    if (draggedEntry) {
+      setActiveDragData(draggedEntry);
+    }
+
     // Add subtle sound effect
     playDragSound("start");
   };
 
   // Handle drag and drop completion
-  const handleDragEnd = (result: DropResult) => {
-    const { source, destination } = result;
-    setDraggedId(null);
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setActiveDragData(null);
 
-    // Drop outside valid area or no movement
-    if (
-      !destination ||
-      (source.droppableId === destination.droppableId &&
-        source.index === destination.index)
-    ) {
+    // If no valid drop target or same position
+    if (!over) {
       // Play cancel sound if dropped outside valid area
       playDragSound("cancel");
       return;
     }
 
-    // Extract day and period from the destination droppableId (format: "day-period")
-    const [newDay, newPeriodStr] = destination.droppableId.split("-");
-    const newPeriod = parseInt(newPeriodStr, 10);
+    const entryId = active.id as string;
 
-    // Get the entry ID being moved
-    const entryId = result.draggableId;
+    // Extract day and period from droppable ID (format: "day-period")
+    const droppableId = over.id as string;
+    const [newDay, newPeriodStr] = droppableId.split("-");
+    const newPeriod = parseInt(newPeriodStr, 10);
 
     // Execute the move
     moveTimetableEntry(entryId, newDay, newPeriod);
@@ -95,20 +120,20 @@ const TimetableGrid = () => {
   // Check if a slot is a valid drop target
   const isValidDropTarget = useCallback(
     (day: string, period: number) => {
-      if (!draggedId) return true;
+      if (!activeId) return true;
 
       // Find the entry we're dragging
-      const entry = timetableEntries.find((e) => e.id === draggedId);
+      const entry = timetableEntries.find((e) => e.id === activeId);
       if (!entry) return true;
 
       // Check if the target slot already has an entry
       const hasExistingEntry = timetableEntries.some(
-        (e) => e.day === day && e.period === period && e.id !== draggedId
+        (e) => e.day === day && e.period === period && e.id !== activeId
       );
 
       return !hasExistingEntry;
     },
-    [draggedId, timetableEntries]
+    [activeId, timetableEntries]
   );
 
   // Get color for subject
@@ -135,54 +160,117 @@ const TimetableGrid = () => {
     return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
   };
 
-  const Card = ({ entry, index }: { entry: TimetableEntry; index: number }) => {
+  const Card = ({ entry }: { entry: TimetableEntry }) => {
     const { subject, teacher } = getEntryDetails(entry);
 
     if (!subject || !teacher) {
       return (
-        <Draggable draggableId={entry.id} index={index} key={entry.id}>
-          {(provided) => (
-            <div
-              ref={provided.innerRef}
-              {...provided.draggableProps}
-              {...provided.dragHandleProps}
-              className="p-3 rounded-lg border bg-muted shadow-sm"
-            >
-              <div className="text-xs">Missing data</div>
-            </div>
-          )}
-        </Draggable>
+        <div
+          className="p-3 rounded-lg border bg-muted shadow-sm"
+          data-id={entry.id}
+        >
+          <div className="text-xs">Missing data</div>
+        </div>
       );
     }
 
     const colorClasses = getSubjectColor(subject.id);
+    const isDragging = activeId === entry.id;
 
     return (
-      <Draggable draggableId={entry.id} index={index} key={entry.id}>
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.draggableProps}
-            {...provided.dragHandleProps}
-            className={`p-2 sm:p-3 rounded-lg border cursor-grab active:cursor-grabbing ${
-              snapshot.isDragging
-                ? "shadow-md opacity-90"
-                : "shadow-sm hover:shadow-md"
-            } ${colorClasses} transition-all duration-200`}
-          >
-            <div className="w-full h-full">
-              <div className="font-semibold text-sm">{subject.name}</div>
-              <div className="text-xs mt-1 opacity-80">{teacher.name}</div>
-            </div>
+      <div
+        className={`p-2 sm:p-3 rounded-lg border cursor-grab active:cursor-grabbing ${
+          isDragging ? "shadow-md opacity-90" : "shadow-sm hover:shadow-md"
+        } ${colorClasses} transition-all duration-200`}
+        data-id={entry.id}
+      >
+        <div className="w-full h-full">
+          <div className="font-semibold text-sm">{subject.name}</div>
+          <div className="text-xs mt-1 opacity-80">{teacher.name}</div>
+        </div>
+      </div>
+    );
+  };
+
+  // Droppable area component
+  const DroppableCell = ({
+    day,
+    period,
+    children,
+  }: {
+    day: string;
+    period: number;
+    children: React.ReactNode;
+  }) => {
+    const isHighlighted = isSlotHighlighted(day, period);
+    const isValidTarget = isValidDropTarget(day, period);
+    const droppableId = `${day}-${period}`;
+
+    const { isOver, setNodeRef } = useDroppable({
+      id: droppableId,
+      disabled: !isValidTarget,
+    });
+
+    // Simplified styling with minimal transitions
+    return (
+      <div
+        ref={setNodeRef}
+        className={`h-full w-full rounded-lg relative ${
+          isOver && isValidTarget
+            ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700"
+            : isOver && !isValidTarget
+            ? "bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700"
+            : "border border-transparent"
+        }`}
+      >
+        {children}
+
+        {/* Simpler drop indicator for empty cells */}
+        {!children && isOver && isValidTarget && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30"></div>
           </div>
         )}
-      </Draggable>
+      </div>
+    );
+  };
+
+  // Draggable item component
+  const DraggableItem = ({ entry }: { entry: TimetableEntry }) => {
+    const { attributes, listeners, setNodeRef, transform, isDragging } =
+      useDraggable({
+        id: entry.id,
+        data: entry,
+      });
+
+    // Simpler transform with no rotation or scaling
+    const style = transform
+      ? {
+          transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+        }
+      : undefined;
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...listeners}
+        {...attributes}
+        className={isDragging ? "z-10" : ""}
+      >
+        <Card entry={entry} />
+      </div>
     );
   };
 
   return (
     <div className="w-full mb-8">
-      <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
         <div className="overflow-x-auto rounded-xl shadow-lg">
           <table className="w-full min-w-full border-collapse bg-card table-fixed">
             <colgroup>
@@ -220,7 +308,6 @@ const TimetableGrid = () => {
 
                     // Style classes based on validation and drag status
                     const isHighlighted = isSlotHighlighted(day, period);
-                    const isValidTarget = isValidDropTarget(day, period);
 
                     const cellClasses = `p-2 border border-border h-24 sm:h-28 ${
                       isHighlighted
@@ -240,52 +327,9 @@ const TimetableGrid = () => {
 
                     return (
                       <td key={`${day}-${period}`} className={cellClasses}>
-                        <Droppable
-                          droppableId={`${day}-${period}`}
-                          isDropDisabled={!isValidTarget}
-                        >
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.droppableProps}
-                              className={`h-full w-full rounded-lg relative transition-all duration-200 ${
-                                snapshot.isDraggingOver && isValidTarget
-                                  ? "bg-blue-50 dark:bg-blue-900/30 border-2 border-dashed border-blue-300 dark:border-blue-700"
-                                  : snapshot.isDraggingOver && !isValidTarget
-                                  ? "bg-red-50 dark:bg-red-900/30 border-2 border-dashed border-red-300 dark:border-red-700"
-                                  : draggedId && isValidTarget
-                                  ? "border-2 border-transparent bg-blue-50/30 dark:bg-blue-900/10"
-                                  : "border-2 border-transparent"
-                              }`}
-                            >
-                              {/* Animation container for cell content */}
-                              <AnimatePresence mode="wait">
-                                {entry && <Card entry={entry} index={0} />}
-                              </AnimatePresence>
-                              {provided.placeholder}
-
-                              {/* Drop indicator overlay for empty cells */}
-                              {!entry && draggedId && isValidTarget && (
-                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-50">
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="24"
-                                    height="24"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="text-blue-500 dark:text-blue-400"
-                                  >
-                                    <path d="M12 19V5M5 12h14" />
-                                  </svg>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </Droppable>
+                        <DroppableCell day={day} period={period}>
+                          {entry && <DraggableItem entry={entry} />}
+                        </DroppableCell>
                       </td>
                     );
                   })}
@@ -294,7 +338,12 @@ const TimetableGrid = () => {
             </tbody>
           </table>
         </div>
-      </DragDropContext>
+
+        {/* Simpler drag overlay with no rotation */}
+        <DragOverlay adjustScale={false}>
+          {activeDragData && <Card entry={activeDragData} />}
+        </DragOverlay>
+      </DndContext>
     </div>
   );
 };
