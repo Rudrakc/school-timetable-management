@@ -16,7 +16,6 @@ export const useTimetable = () => {
     removeTimetableEntry,
     updateTimetableEntry,
     moveTimetableEntry,
-    initializeTimetable,
     resetTimetable,
   } = useTimetableStore();
 
@@ -91,7 +90,6 @@ export const useTimetable = () => {
     timetableEntries,
 
     // Actions
-    initializeTimetable,
     resetTimetable,
     addTimetableEntry,
     removeTimetableEntry,

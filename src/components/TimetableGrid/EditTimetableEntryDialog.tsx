@@ -243,14 +243,12 @@ const EditTimetableEntryDialog = ({
               Delete
             </Button>
           )}
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="border-gray-300 dark:border-gray-700"
-          >
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSave}>Save</Button>
+          <Button variant="outline" onClick={handleSave}>
+            Save
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

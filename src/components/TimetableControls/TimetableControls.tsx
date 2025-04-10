@@ -4,13 +4,8 @@ import { useTimetableStore } from "../../store";
 import { Button } from "../ui/button";
 
 const TimetableControls = () => {
-  const {
-    initializeTimetable,
-    resetTimetable,
-    timetableEntries,
-    subjects,
-    teachers,
-  } = useTimetableStore();
+  const { resetTimetable, timetableEntries, subjects, teachers } =
+    useTimetableStore();
 
   // Calculate statistics
   const statistics = useMemo(() => {
@@ -74,38 +69,34 @@ const TimetableControls = () => {
   return (
     <div className="w-full">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-        <h2 className="text-xl font-semibold">Timetable Dashboard</h2>
+        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
+          Timetable Dashboard
+        </h2>
         <div className="flex w-full sm:w-auto gap-3 flex-wrap sm:flex-nowrap">
           <Button
             variant="outline"
             onClick={resetTimetable}
-            className="border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-700 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm w-full sm:w-auto"
+            className="border-red-200 dark:border-red-800 bg-white dark:bg-transparent hover:bg-red-50 dark:hover:bg-red-900/20 text-red-700 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm w-full sm:w-auto shadow-sm"
           >
             Reset Timetable
-          </Button>
-          <Button
-            onClick={initializeTimetable}
-            className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800 text-sm w-full sm:w-auto"
-          >
-            Generate New Timetable
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 w-full mb-4 sm:mb-6">
         <motion.div
-          className="bg-card rounded-lg p-3 sm:p-4 shadow-sm border border-border w-full"
+          className="bg-white dark:bg-card rounded-lg p-3 sm:p-4 shadow-sm border border-gray-200 dark:border-gray-800 w-full"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <div className="text-xs sm:text-sm text-muted-foreground mb-1">
+          <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
             Completeness
           </div>
-          <div className="text-xl sm:text-2xl font-bold mb-2">
+          <div className="text-xl sm:text-2xl font-bold mb-2 text-gray-800 dark:text-gray-100">
             {statistics.completenessPercentage}%
           </div>
-          <div className="w-full bg-muted rounded-full h-2.5">
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
             <div
               className="bg-blue-600 dark:bg-blue-500 h-2.5 rounded-full"
               style={{ width: `${statistics.completenessPercentage}%` }}
@@ -114,58 +105,47 @@ const TimetableControls = () => {
         </motion.div>
 
         <motion.div
-          className="bg-card rounded-lg p-3 sm:p-4 shadow-sm border border-border w-full"
+          className="bg-white dark:bg-card rounded-lg p-3 sm:p-4 shadow-sm border border-gray-200 dark:border-gray-800 w-full"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="text-xs sm:text-sm text-muted-foreground mb-1">
+          <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
             Total Entries
           </div>
-          <div className="text-xl sm:text-2xl font-bold mb-2">
+          <div className="text-xl sm:text-2xl font-bold mb-2 text-gray-800 dark:text-gray-100">
             {statistics.totalEntries}
           </div>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-gray-500 dark:text-gray-400">
             From {statistics.totalSubjects} subjects and{" "}
             {statistics.totalTeachers} teachers
           </div>
         </motion.div>
 
         <motion.div
-          className="bg-card rounded-lg p-3 sm:p-4 shadow-sm border border-border w-full"
+          className="bg-white dark:bg-card rounded-lg p-3 sm:p-4 shadow-sm border border-gray-200 dark:border-gray-800 w-full flex flex-col gap-3"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          <div className="text-xs sm:text-sm text-muted-foreground mb-1">
-            Subject Coverage
+          <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">
+            Class Selection
           </div>
-          <div className="mt-2 space-y-2">
-            {statistics.subjectCompleteness
-              .sort((a, b) => a.percentage - b.percentage)
-              .slice(0, 3)
-              .map((subject) => (
-                <div key={subject.id} className="text-xs">
-                  <div className="flex justify-between mb-1">
-                    <span className="font-medium">{subject.name}</span>
-                    <span className="text-muted-foreground">
-                      {subject.actual}/{subject.required}
-                    </span>
-                  </div>
-                  <div className="w-full bg-muted rounded-full h-1.5">
-                    <div
-                      className={`h-1.5 rounded-full ${
-                        subject.percentage < 100
-                          ? "bg-amber-500 dark:bg-amber-600"
-                          : subject.percentage > 100
-                          ? "bg-red-500 dark:bg-red-600"
-                          : "bg-green-500 dark:bg-green-600"
-                      }`}
-                      style={{ width: `${Math.min(100, subject.percentage)}%` }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="outline"
+              className="w-full h-12 text-lg font-medium bg-[#f9fafb] "
+              onClick={() => {}}
+            >
+              Class A
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full h-12 text-lg font-medium bg-[#f9fafb] "
+              onClick={() => {}}
+            >
+              Class B
+            </Button>
           </div>
         </motion.div>
       </div>

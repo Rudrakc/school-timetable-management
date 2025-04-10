@@ -1,20 +1,11 @@
-import { useEffect } from "react";
 import TimetableGrid from "./components/TimetableGrid";
 import TimetableControls from "./components/TimetableControls";
-import { ModeToggle } from "./components/mode-toggle";
-import { ThemeProvider } from "./components/theme-provider";
-import { useTimetableStore } from "./store";
+import { ModeToggle } from "./components/ui/mode-toggle";
+import { ThemeProvider } from "./components/ui/theme-provider";
 import { Toaster } from "./components/ui/sonner";
 import "./App.css";
 
 function App() {
-  const { initializeTimetable } = useTimetableStore();
-
-  // Initialize timetable when app loads
-  useEffect(() => {
-    initializeTimetable();
-  }, [initializeTimetable]);
-
   return (
     <ThemeProvider defaultTheme="light">
       <div className="min-h-screen w-full bg-background text-foreground flex flex-col py-6 transition-colors duration-200">

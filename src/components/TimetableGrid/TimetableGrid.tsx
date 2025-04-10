@@ -94,9 +94,6 @@ const TimetableGrid = () => {
     if (draggedEntry) {
       setActiveDragData(draggedEntry);
     }
-
-    // Add subtle sound effect
-    playDragSound("start");
   };
 
   // Handle drag and drop completion
@@ -107,8 +104,6 @@ const TimetableGrid = () => {
 
     // If no valid drop target or same position
     if (!over) {
-      // Play cancel sound if dropped outside valid area
-      playDragSound("cancel");
       return;
     }
 
@@ -133,7 +128,6 @@ const TimetableGrid = () => {
 
     if (!isSlotEmpty) {
       toast.error("This slot is already occupied");
-      playDragSound("cancel");
       return;
     }
 
@@ -143,29 +137,10 @@ const TimetableGrid = () => {
       (slot) => slot.day === newDay && slot.period === newPeriod
     );
 
-    if (teacher) {
-      // Find nearby available slots if this one isn't available
-      if (!isTeacherAvailable) {
-        // Get slots for the same day
-        const slotsOnSameDay = teacher.availableSlots
-          .filter((slot) => slot.day === newDay)
-          .map((slot) => slot.period)
-          .sort((a, b) => a - b);
-
-        // Get slots for all days
-        const nearbyDays = DAYS.slice(
-          Math.max(0, DAYS.indexOf(newDay) - 1),
-          Math.min(DAYS.length, DAYS.indexOf(newDay) + 2)
-        );
-      }
-    }
-
     if (!isTeacherAvailable) {
       // Simplified error toast
       const teacherName = teacher?.name || "Selected teacher";
       toast.error(`${teacherName} is not available for this slot.`);
-
-      playDragSound("cancel");
       return;
     }
 
@@ -186,41 +161,10 @@ const TimetableGrid = () => {
 
     // Validate the timetable after move
     validateTimetable();
-
-    // Play success sound
-    playDragSound("drop");
   };
-
-  // Simple utility for drag sounds
-  const playDragSound = (type: "start" | "drop" | "cancel") => {
-    // This would implement actual sounds in production
-    // For now we just have the function structure
-  };
-
-  // Check if a slot is a valid drop target
-  const isValidDropTarget = useCallback(
-    (day: string, period: number) => {
-      if (!activeId) return true;
-
-      // Find the entry we're dragging
-      const entry = timetableEntries.find((e) => e.id === activeId);
-      if (!entry) return true;
-
-      // Only check if the target slot already has an entry
-      const hasExistingEntry = timetableEntries.some(
-        (e) => e.day === day && e.period === period && e.id !== activeId
-      );
-
-      // Always allow dropping on empty slots, regardless of teacher availability
-      // Teacher availability will be checked in handleDragEnd
-
-      return !hasExistingEntry;
-    },
-    [activeId, timetableEntries]
-  );
 
   // Get color for subject
-  const getSubjectColor = useCallback((subjectId: number) => {
+  const getSubjectColor = (subjectId: number) => {
     const colors = [
       "bg-blue-100 dark:bg-blue-900/50 border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-100",
       "bg-green-100 dark:bg-green-900/50 border-green-300 dark:border-green-700 text-green-800 dark:text-green-100",
@@ -232,15 +176,6 @@ const TimetableGrid = () => {
       "bg-teal-100 dark:bg-teal-900/50 border-teal-300 dark:border-teal-700 text-teal-800 dark:text-teal-100",
     ];
     return colors[subjectId % colors.length];
-  }, []);
-
-  const getColorClassForSubject = (subjectName: string) => {
-    // Find subject by name or use a default color scheme
-    const subject = subjects.find((s) => s.name === subjectName);
-    if (subject) {
-      return getSubjectColor(subject.id);
-    }
-    return "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200";
   };
 
   const Card = ({ entry }: { entry: TimetableEntry }) => {
@@ -297,7 +232,7 @@ const TimetableGrid = () => {
     });
 
     // Check if teacher is available for this slot (for visual indication only)
-    const isTeacherAvailable = useCallback(() => {
+    const isTeacherAvailable = () => {
       if (!activeId) return true;
 
       const entry = timetableEntries.find((e) => e.id === activeId);
@@ -307,7 +242,7 @@ const TimetableGrid = () => {
       return teacher?.availableSlots.some(
         (slot) => slot.day === day && slot.period === period
       );
-    }, [activeId, day, period]);
+    };
 
     // Check if slot is empty
     const isSlotEmpty = !children;
@@ -431,7 +366,7 @@ const TimetableGrid = () => {
           <table className="w-full min-w-full border-collapse bg-white dark:bg-card table-fixed">
             <colgroup>
               <col className="w-16" />
-              {DAYS.map((day, index) => (
+              {DAYS.map((day) => (
                 <col key={`col-${day}`} className="w-1/6" />
               ))}
             </colgroup>
@@ -487,15 +422,6 @@ const TimetableGrid = () => {
             </tbody>
           </table>
         </div>
-
-        {/* Drag overlay with simplified appearance */}
-        <DragOverlay adjustScale={false} zIndex={1000}>
-          {activeDragData && (
-            <div className="opacity-95 shadow-sm">
-              <Card entry={activeDragData} />
-            </div>
-          )}
-        </DragOverlay>
       </DndContext>
 
       {/* Edit dialog */}

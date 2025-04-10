@@ -58,9 +58,6 @@ interface TimetableState {
   days: string[];
   periodsPerDay: number;
   timetableEntries: TimetableEntry[];
-
-  // Actions
-  initializeTimetable: () => void;
   addTimetableEntry: (entry: Omit<TimetableEntry, "id">) => void;
   removeTimetableEntry: (id: string) => void;
   updateTimetableEntry: (id: string, updates: Partial<TimetableEntry>) => void;
