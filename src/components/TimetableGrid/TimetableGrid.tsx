@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -26,7 +26,23 @@ const TimetableGrid = () => {
     teachers,
     moveTimetableEntry,
     validateTimetable,
+    activeClassId,
+    getClassTimetable,
   } = useTimetableStore();
+
+  // Get entries for the active class
+  const activeClassEntries = useMemo(() => {
+    return getClassTimetable(activeClassId);
+  }, [activeClassId, getClassTimetable, timetableEntries]);
+
+  // Debug: Log when entries change
+  useEffect(() => {
+    console.log("Active class entries updated:", activeClassEntries);
+  }, [activeClassEntries]);
+
+  useEffect(() => {
+    console.log("All timetable entries updated:", timetableEntries);
+  }, [timetableEntries]);
 
   // Configure sensors for drag detection with delay to distinguish between drag and click
   const sensors = useSensors(
@@ -88,7 +104,7 @@ const TimetableGrid = () => {
     setActiveId(active.id as string);
 
     // Find the entry being dragged
-    const draggedEntry = timetableEntries.find(
+    const draggedEntry = activeClassEntries.find(
       (entry) => entry.id === active.id
     );
     if (draggedEntry) {
@@ -115,11 +131,13 @@ const TimetableGrid = () => {
     const newPeriod = parseInt(newPeriodStr, 10);
 
     // Find the entry we're moving
-    const entryToMove = timetableEntries.find((entry) => entry.id === entryId);
+    const entryToMove = activeClassEntries.find(
+      (entry) => entry.id === entryId
+    );
     if (!entryToMove) return;
 
-    // Check if the target slot is empty
-    const isSlotEmpty = !timetableEntries.some(
+    // Check if the target slot is empty for this class
+    const isSlotEmpty = !activeClassEntries.some(
       (entry) =>
         entry.id !== entryId &&
         entry.day === newDay &&
@@ -133,34 +151,55 @@ const TimetableGrid = () => {
 
     // Check teacher availability
     const teacher = teachers.find((t) => t.id === entryToMove.teacherId);
-    const isTeacherAvailable = teacher?.availableSlots.some(
-      (slot) => slot.day === newDay && slot.period === newPeriod
+
+    // Check if the teacher is already teaching another class at this time
+    const isTeacherBusyInOtherClass = timetableEntries.some(
+      (entry) =>
+        entry.id !== entryId &&
+        entry.day === newDay &&
+        entry.period === newPeriod &&
+        entry.teacherId === entryToMove.teacherId
     );
+
+    const isTeacherAvailable =
+      teacher?.availableSlots.some(
+        (slot) => slot.day === newDay && slot.period === newPeriod
+      ) && !isTeacherBusyInOtherClass;
 
     if (!isTeacherAvailable) {
       // Simplified error toast
       const teacherName = teacher?.name || "Selected teacher";
-      toast.error(`${teacherName} is not available for this slot.`);
+      if (isTeacherBusyInOtherClass) {
+        toast.error(
+          `${teacherName} is already teaching another class at this time.`
+        );
+      } else {
+        toast.error(`${teacherName} is not available for this slot.`);
+      }
       return;
     }
 
     // Execute the move
-    moveTimetableEntry(entryId, newDay, newPeriod);
+    const moveSuccessful = moveTimetableEntry(entryId, newDay, newPeriod);
 
-    // Show success toast
-    const movedSubject = subjects.find((s) => s.id === entryToMove.subjectId);
-    const movedTeacher = teachers.find((t) => t.id === entryToMove.teacherId);
-    toast.success(
-      <div>
-        <p>
-          Successfully moved <strong>{movedSubject?.name}</strong>
-        </p>
-        <p className="text-xs opacity-80">Teacher: {movedTeacher?.name}</p>
-      </div>
-    );
+    if (moveSuccessful) {
+      // Show success toast
+      const movedSubject = subjects.find((s) => s.id === entryToMove.subjectId);
+      const movedTeacher = teachers.find((t) => t.id === entryToMove.teacherId);
+      toast.success(
+        <div>
+          <p>
+            Successfully moved <strong>{movedSubject?.name}</strong>
+          </p>
+          <p className="text-xs opacity-80">Teacher: {movedTeacher?.name}</p>
+        </div>
+      );
 
-    // Validate the timetable after move
-    validateTimetable();
+      // Validate the timetable after move
+      validateTimetable();
+    } else {
+      toast.error("Failed to move the entry. Please try again.");
+    }
   };
 
   // Get color for subject
@@ -235,7 +274,7 @@ const TimetableGrid = () => {
     const isTeacherAvailable = () => {
       if (!activeId) return true;
 
-      const entry = timetableEntries.find((e) => e.id === activeId);
+      const entry = activeClassEntries.find((e) => e.id === activeId);
       if (!entry) return true;
 
       const teacher = teachers.find((t) => t.id === entry.teacherId);
@@ -393,7 +432,7 @@ const TimetableGrid = () => {
                   </td>
                   {DAYS.map((day, colIndex) => {
                     // Find timetable entry for this slot
-                    const entry = timetableEntries.find(
+                    const entry = activeClassEntries.find(
                       (e) => e.day === day && e.period === period
                     );
 

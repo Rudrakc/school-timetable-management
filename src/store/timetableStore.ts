@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { Subject, Teacher, TimetableEntry, TimeSlot } from "../types";
+import { Subject, Teacher, TimetableEntry, TimeSlot, Class } from "../types";
 import { DAYS, PERIODS } from "../constants";
 import { generateId } from "../utils";
 
@@ -13,6 +13,12 @@ const initialSubjects: Subject[] = [
   { id: 6, name: "Physical Education", weeklyLectures: 3 },
   { id: 7, name: "Art", weeklyLectures: 2 },
   { id: 8, name: "Music", weeklyLectures: 1 },
+];
+
+// Initial classes
+const initialClasses: Class[] = [
+  { id: "class-a", name: "Class A" },
+  { id: "class-b", name: "Class B" },
 ];
 
 // Generate available slots for teachers (Monday to Friday, periods 1-7)
@@ -55,9 +61,18 @@ interface TimetableState {
   // Data
   subjects: Subject[];
   teachers: Teacher[];
+  classes: Class[];
+  activeClassId: string;
   days: string[];
   periodsPerDay: number;
   timetableEntries: TimetableEntry[];
+
+  // Class management
+  addClass: (className: string) => void;
+  removeClass: (classId: string) => void;
+  setActiveClass: (classId: string) => void;
+
+  // Timetable management
   addTimetableEntry: (entry: Omit<TimetableEntry, "id">) => void;
   removeTimetableEntry: (id: string) => void;
   updateTimetableEntry: (id: string, updates: Partial<TimetableEntry>) => void;
@@ -65,20 +80,58 @@ interface TimetableState {
     entryId: string,
     newDay: string,
     newPeriod: number
-  ) => void;
+  ) => boolean;
   validateTimetable: () => void; // Keep as no-op to avoid breaking existing code
-  resetTimetable: () => void;
+  resetTimetable: (classId?: string) => void;
+  getClassTimetable: (classId: string) => TimetableEntry[];
+
+  // Other actions
   setSubjects: (subjects: Subject[]) => void;
   setTeachers: (teachers: Teacher[]) => void;
+  setClasses: (classes: Class[]) => void;
 }
 
 export const useTimetableStore = create<TimetableState>()((set, get) => ({
   // Initial state
   subjects: initialSubjects,
   teachers: initialTeachers,
+  classes: initialClasses,
+  activeClassId: initialClasses[0].id, // Default to first class
   days: DAYS,
   periodsPerDay: PERIODS.length,
   timetableEntries: [],
+
+  // Class management
+  addClass: (className) => {
+    const newClass = { id: generateId(), name: className };
+    set((state) => ({
+      classes: [...state.classes, newClass],
+    }));
+  },
+
+  removeClass: (classId) => {
+    set((state) => ({
+      classes: state.classes.filter((cls) => cls.id !== classId),
+      // Also remove all timetable entries for this class
+      timetableEntries: state.timetableEntries.filter(
+        (entry) => entry.classId !== classId
+      ),
+      // If we're removing the active class, switch to another one
+      activeClassId:
+        state.activeClassId === classId && state.classes.length > 1
+          ? state.classes.find((cls) => cls.id !== classId)?.id || ""
+          : state.activeClassId,
+    }));
+  },
+
+  setActiveClass: (classId) => {
+    set({ activeClassId: classId });
+  },
+
+  // Timetable actions
+  getClassTimetable: (classId) => {
+    return get().timetableEntries.filter((entry) => entry.classId === classId);
+  },
 
   // Actions
   initializeTimetable: () => {
@@ -93,10 +146,27 @@ export const useTimetableStore = create<TimetableState>()((set, get) => ({
   },
 
   addTimetableEntry: (entry) => {
-    const newEntry = { ...entry, id: generateId() };
+    const { activeClassId } = get();
+
+    // Ensure the classId is set and valid
+    const classId = entry.classId || activeClassId;
+
+    if (!classId) {
+      console.error("No class ID provided when adding timetable entry");
+      return false;
+    }
+
+    const newEntry = {
+      ...entry,
+      id: generateId(),
+      classId,
+    };
+
     set((state) => ({
       timetableEntries: [...state.timetableEntries, newEntry],
     }));
+
+    return true;
   },
 
   removeTimetableEntry: (id) => {
@@ -119,31 +189,53 @@ export const useTimetableStore = create<TimetableState>()((set, get) => ({
     const { timetableEntries, teachers } = get();
     const entryToMove = timetableEntries.find((entry) => entry.id === entryId);
 
-    if (!entryToMove) return;
+    if (!entryToMove) return false;
 
-    // Check if the target slot is empty
+    // Check if the target slot is empty for the same class
     const isSlotEmpty = !timetableEntries.some(
       (entry) =>
         entry.id !== entryId &&
         entry.day === newDay &&
-        entry.period === newPeriod
+        entry.period === newPeriod &&
+        entry.classId === entryToMove.classId
     );
 
     // Check if teacher is available for this slot
     const teacher = teachers.find((t) => t.id === entryToMove.teacherId);
-    const isTeacherAvailable = teacher?.availableSlots.some(
-      (slot) => slot.day === newDay && slot.period === newPeriod
+
+    // Check if the teacher is already assigned to another class at the same time
+    const isTeacherBusy = timetableEntries.some(
+      (entry) =>
+        entry.id !== entryId &&
+        entry.day === newDay &&
+        entry.period === newPeriod &&
+        entry.teacherId === entryToMove.teacherId
     );
 
+    const isTeacherAvailable =
+      teacher?.availableSlots.some(
+        (slot) => slot.day === newDay && slot.period === newPeriod
+      ) && !isTeacherBusy;
+
     if (isSlotEmpty && isTeacherAvailable) {
+      // Make a copy of the entry with updated values to ensure we preserve classId and other properties
+      const updatedEntry = {
+        ...entryToMove,
+        day: newDay,
+        period: newPeriod,
+      };
+
+      // Update the timetable entries array with the new entry
       set((state) => ({
         timetableEntries: state.timetableEntries.map((entry) =>
-          entry.id === entryId
-            ? { ...entry, day: newDay, period: newPeriod }
-            : entry
+          entry.id === entryId ? updatedEntry : entry
         ),
       }));
+
+      return true; // Return success
     }
+
+    return false; // Return failure
   },
 
   // Empty validation function that does nothing
@@ -151,8 +243,12 @@ export const useTimetableStore = create<TimetableState>()((set, get) => ({
     // No-op function to maintain API compatibility
   },
 
-  resetTimetable: () => {
-    set({ timetableEntries: [] });
+  resetTimetable: (classId) => {
+    set((state) => ({
+      timetableEntries: classId
+        ? state.timetableEntries.filter((entry) => entry.classId !== classId)
+        : [],
+    }));
   },
 
   setSubjects: (subjects) => {
@@ -161,5 +257,9 @@ export const useTimetableStore = create<TimetableState>()((set, get) => ({
 
   setTeachers: (teachers) => {
     set({ teachers });
+  },
+
+  setClasses: (classes) => {
+    set({ classes });
   },
 }));

@@ -4,15 +4,28 @@ import { useTimetableStore } from "../../store";
 import { Button } from "../ui/button";
 
 const TimetableControls = () => {
-  const { resetTimetable, timetableEntries, subjects, teachers } =
-    useTimetableStore();
+  const {
+    resetTimetable,
+    timetableEntries,
+    subjects,
+    teachers,
+    classes,
+    activeClassId,
+    setActiveClass,
+    getClassTimetable,
+  } = useTimetableStore();
+
+  // Get entries for the active class
+  const activeClassEntries = useMemo(() => {
+    return getClassTimetable(activeClassId);
+  }, [activeClassId, getClassTimetable]);
 
   // Calculate statistics
   const statistics = useMemo(() => {
     // Count of entries per subject
     const entriesPerSubject: Record<number, number> = {};
     subjects.forEach((subject) => {
-      entriesPerSubject[subject.id] = timetableEntries.filter(
+      entriesPerSubject[subject.id] = activeClassEntries.filter(
         (entry) => entry.subjectId === subject.id
       ).length;
     });
@@ -20,14 +33,14 @@ const TimetableControls = () => {
     // Count of entries per teacher
     const entriesPerTeacher: Record<number, number> = {};
     teachers.forEach((teacher) => {
-      entriesPerTeacher[teacher.id] = timetableEntries.filter(
+      entriesPerTeacher[teacher.id] = activeClassEntries.filter(
         (entry) => entry.teacherId === teacher.id
       ).length;
     });
 
     // Count entries per day
     const entriesPerDay: Record<string, number> = {};
-    timetableEntries.forEach((entry) => {
+    activeClassEntries.forEach((entry) => {
       entriesPerDay[entry.day] = (entriesPerDay[entry.day] || 0) + 1;
     });
 
@@ -38,7 +51,7 @@ const TimetableControls = () => {
     );
     const completenessPercentage =
       totalRequiredEntries > 0
-        ? Math.round((timetableEntries.length / totalRequiredEntries) * 100)
+        ? Math.round((activeClassEntries.length / totalRequiredEntries) * 100)
         : 0;
 
     // Calculate difference between required and actual entries per subject
@@ -55,7 +68,7 @@ const TimetableControls = () => {
     });
 
     return {
-      totalEntries: timetableEntries.length,
+      totalEntries: activeClassEntries.length,
       entriesPerSubject,
       entriesPerTeacher,
       entriesPerDay,
@@ -64,21 +77,27 @@ const TimetableControls = () => {
       totalTeachers: teachers.length,
       subjectCompleteness,
     };
-  }, [timetableEntries, subjects, teachers]);
+  }, [activeClassEntries, subjects, teachers]);
+
+  // Get the active class name
+  const activeClassName = useMemo(() => {
+    const activeClass = classes.find((cls) => cls.id === activeClassId);
+    return activeClass ? activeClass.name : "";
+  }, [activeClassId, classes]);
 
   return (
     <div className="w-full">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
         <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">
-          Timetable Dashboard
+          Timetable Dashboard - {activeClassName}
         </h2>
         <div className="flex w-full sm:w-auto gap-3 flex-wrap sm:flex-nowrap">
           <Button
             variant="outline"
-            onClick={resetTimetable}
+            onClick={() => resetTimetable(activeClassId)}
             className="border-red-200 dark:border-red-800 bg-white dark:bg-transparent hover:bg-red-50 dark:hover:bg-red-900/20 text-red-700 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm w-full sm:w-auto shadow-sm"
           >
-            Reset Timetable
+            Reset {activeClassName} Timetable
           </Button>
         </div>
       </div>
@@ -132,20 +151,20 @@ const TimetableControls = () => {
             Class Selection
           </div>
           <div className="flex flex-col gap-3">
-            <Button
-              variant="outline"
-              className="w-full h-12 text-lg font-medium bg-[#f9fafb] "
-              onClick={() => {}}
-            >
-              Class A
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full h-12 text-lg font-medium bg-[#f9fafb] "
-              onClick={() => {}}
-            >
-              Class B
-            </Button>
+            {classes.map((cls) => (
+              <Button
+                key={cls.id}
+                variant={activeClassId === cls.id ? "default" : "outline"}
+                className={`w-full h-12 text-lg font-medium ${
+                  activeClassId === cls.id
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-[#f9fafb]"
+                }`}
+                onClick={() => setActiveClass(cls.id)}
+              >
+                {cls.name}
+              </Button>
+            ))}
           </div>
         </motion.div>
       </div>

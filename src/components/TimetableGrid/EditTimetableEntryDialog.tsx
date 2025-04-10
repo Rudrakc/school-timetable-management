@@ -41,6 +41,8 @@ const EditTimetableEntryDialog = ({
     updateTimetableEntry,
     removeTimetableEntry,
     validateTimetable,
+    activeClassId,
+    timetableEntries,
   } = useTimetableStore();
 
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(
@@ -60,6 +62,8 @@ const EditTimetableEntryDialog = ({
 
   // Set initial values when dialog opens
   useEffect(() => {
+    if (!isOpen) return;
+
     if (entry) {
       setSelectedSubjectId(entry.subjectId);
       setSelectedTeacherId(entry.teacherId);
@@ -68,72 +72,139 @@ const EditTimetableEntryDialog = ({
       setSelectedSubjectId(subjects[0]?.id || null);
       setSelectedTeacherId(teachers[0]?.id || null);
     }
-  }, [entry, subjects, teachers]);
+  }, [entry, subjects, teachers, isOpen]);
 
   const handleSave = () => {
     if (!selectedSubjectId || !selectedTeacherId) {
-      return; // Can't save without both values
+      toast.error("Please select both subject and teacher");
+      return;
     }
 
-    if (isNewEntry) {
-      // Creating a new entry
-      if (day && period !== undefined) {
-        // Check if the teacher is available for this slot
-        const teacher = teachers.find((t) => t.id === selectedTeacherId);
-        if (teacher) {
-          // Check if this specific slot is available
-          const isSlotAvailable = teacher.availableSlots.some(
-            (slot) => slot.day === day && slot.period === period
+    try {
+      if (isNewEntry) {
+        // Creating a new entry
+        if (day && period !== undefined) {
+          // Check if the teacher is available for this slot
+          const teacher = teachers.find((t) => t.id === selectedTeacherId);
+          if (teacher) {
+            // Check if this specific slot is available
+            const isSlotAvailable = teacher.availableSlots.some(
+              (slot) => slot.day === day && slot.period === period
+            );
+
+            // Check if teacher is already teaching another class at this time
+            const isTeacherBusy = timetableEntries.some(
+              (entry) =>
+                entry.day === day &&
+                entry.period === period &&
+                entry.teacherId === selectedTeacherId
+            );
+
+            if (!isSlotAvailable) {
+              // Show availability error
+              toast.error(`${teacher.name} is not available for this slot.`);
+              return; // Don't save the entry
+            }
+
+            if (isTeacherBusy) {
+              // Show conflict error
+              toast.error(
+                `${teacher.name} is already teaching another class at this time.`
+              );
+              return; // Don't save the entry
+            }
+          }
+
+          // Check if the slot is already occupied in the current class
+          const isSlotOccupied = timetableEntries.some(
+            (entry) =>
+              entry.day === day &&
+              entry.period === period &&
+              entry.classId === activeClassId
           );
 
-          if (!isSlotAvailable) {
-            // Simplified error toast
-            toast.error(`${teacher.name} is not available for this slot.`);
-            return; // Don't save the entry
+          if (isSlotOccupied) {
+            toast.error("This slot is already occupied in the current class.");
+            return;
           }
+
+          // Add the entry with explicit classId
+          addTimetableEntry({
+            subjectId: selectedSubjectId,
+            teacherId: selectedTeacherId,
+            day,
+            period,
+            classId: activeClassId,
+          });
+
+          toast.success(
+            <div>
+              <p>
+                Successfully added <strong>{selectedSubject?.name}</strong>
+              </p>
+              <p className="text-xs opacity-80">
+                Teacher: {selectedTeacher?.name}
+              </p>
+            </div>
+          );
+
+          // Close dialog
+          validateTimetable();
+          onClose();
+        }
+      } else if (entry) {
+        // Check if the updated entry would create a conflict
+        const teacherBusyElsewhere =
+          entry.teacherId !== selectedTeacherId &&
+          timetableEntries.some(
+            (e) =>
+              e.id !== entry.id &&
+              e.day === entry.day &&
+              e.period === entry.period &&
+              e.teacherId === selectedTeacherId
+          );
+
+        if (teacherBusyElsewhere) {
+          const teacher = teachers.find((t) => t.id === selectedTeacherId);
+          toast.error(
+            `${teacher?.name} is already teaching another class at this time.`
+          );
+          return;
         }
 
-        addTimetableEntry({
+        // Updating existing entry
+        updateTimetableEntry(entry.id, {
           subjectId: selectedSubjectId,
           teacherId: selectedTeacherId,
-          day,
-          period,
         });
 
         toast.success(
           <div>
-            <p>
-              Successfully added <strong>{selectedSubject?.name}</strong>
-            </p>
-            <p className="text-xs opacity-80">
-              Teacher: {selectedTeacher?.name}
-            </p>
+            <p>Successfully updated entry</p>
           </div>
         );
+
+        // Close dialog
+        validateTimetable();
+        onClose();
       }
-    } else if (entry) {
-      // Updating existing entry
-      updateTimetableEntry(entry.id, {
-        subjectId: selectedSubjectId,
-        teacherId: selectedTeacherId,
-      });
-
-      toast.success(
-        <div>
-          <p>Successfully updated entry</p>
-        </div>
-      );
+    } catch (error) {
+      console.error("Error saving timetable entry:", error);
+      toast.error("An error occurred while saving the entry");
     }
-
-    validateTimetable();
-    onClose();
   };
 
   const handleDelete = () => {
     if (entry) {
-      removeTimetableEntry(entry.id);
-      validateTimetable();
-      onClose();
+      try {
+        removeTimetableEntry(entry.id);
+        validateTimetable();
+        toast.success("Entry successfully deleted");
+        onClose();
+      } catch (error) {
+        console.error("Error deleting timetable entry:", error);
+        toast.error("An error occurred while deleting the entry");
+      }
     }
   };
 

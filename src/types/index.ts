@@ -21,4 +21,10 @@ export interface TimetableEntry {
   teacherId: number;
   day: string;
   period: number;
+  classId: string;
+}
+
+export interface Class {
+  id: string;
+  name: string;
 }
