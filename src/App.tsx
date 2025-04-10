@@ -1,10 +1,10 @@
 import { useEffect } from "react";
 import TimetableGrid from "./components/TimetableGrid";
-import ValidationMessages from "./components/ValidationMessages";
 import TimetableControls from "./components/TimetableControls";
 import { ModeToggle } from "./components/mode-toggle";
 import { ThemeProvider } from "./components/theme-provider";
 import { useTimetableStore } from "./store";
+import { Toaster } from "./components/ui/sonner";
 import "./App.css";
 
 function App() {
@@ -32,25 +32,22 @@ function App() {
             </p>
           </header>
 
-          <div className="bg-card text-card-foreground rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="bg-white dark:bg-card text-gray-800 dark:text-card-foreground rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8 border border-gray-100 dark:border-transparent">
             <TimetableControls />
           </div>
 
-          <div className="bg-card text-card-foreground rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
-            <ValidationMessages />
-          </div>
-
-          <div className="bg-card text-card-foreground rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8">
+          <div className="bg-white dark:bg-card text-gray-800 dark:text-card-foreground rounded-xl shadow-sm p-4 sm:p-6 mb-6 sm:mb-8 border border-gray-100 dark:border-transparent">
             <h2 className="text-xl font-semibold mb-4">Timetable</h2>
             <TimetableGrid />
           </div>
 
-          <footer className="text-center text-muted-foreground text-sm mt-6 sm:mt-8 pb-6 sm:pb-8">
+          <footer className="text-center text-gray-500 dark:text-muted-foreground text-sm mt-6 sm:mt-8 pb-6 sm:pb-8">
             <p>School Timetable Builder &copy; {new Date().getFullYear()}</p>
             <p className="mt-1 text-xs opacity-75">Built for Sachin with ❤️</p>
           </footer>
         </div>
       </div>
+      <Toaster />
     </ThemeProvider>
   );
 }

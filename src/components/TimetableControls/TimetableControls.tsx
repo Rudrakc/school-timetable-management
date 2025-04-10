@@ -10,7 +10,6 @@ const TimetableControls = () => {
     timetableEntries,
     subjects,
     teachers,
-    validationErrors,
   } = useTimetableStore();
 
   // Calculate statistics
@@ -93,7 +92,7 @@ const TimetableControls = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 w-full mb-4 sm:mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 w-full mb-4 sm:mb-6">
         <motion.div
           className="bg-card rounded-lg p-3 sm:p-4 shadow-sm border border-border w-full"
           initial={{ opacity: 0, y: 20 }}
@@ -129,33 +128,6 @@ const TimetableControls = () => {
           <div className="text-xs text-muted-foreground">
             From {statistics.totalSubjects} subjects and{" "}
             {statistics.totalTeachers} teachers
-          </div>
-        </motion.div>
-
-        <motion.div
-          className="bg-card rounded-lg p-3 sm:p-4 shadow-sm border border-border w-full"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <div className="text-xs sm:text-sm text-muted-foreground mb-1">
-            Issues
-          </div>
-          <div className="text-xl sm:text-2xl font-bold mb-2">
-            <span
-              className={
-                validationErrors.length > 0
-                  ? "text-red-600 dark:text-red-400"
-                  : "text-green-600 dark:text-green-400"
-              }
-            >
-              {validationErrors.length}
-            </span>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {validationErrors.length === 0
-              ? "No validation issues found!"
-              : `${validationErrors.length} issues need attention`}
           </div>
         </motion.div>
 

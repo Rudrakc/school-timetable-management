@@ -12,7 +12,6 @@ export const useTimetable = () => {
     days,
     periodsPerDay,
     timetableEntries,
-    validationErrors,
     addTimetableEntry,
     removeTimetableEntry,
     updateTimetableEntry,
@@ -83,18 +82,6 @@ export const useTimetable = () => {
     );
   };
 
-  // Get validation errors related to a specific entry
-  const getErrorsForEntry = (entryId: string) => {
-    // For now, we'll just return all errors
-    // In future, we can filter errors related to specific entries
-    return validationErrors;
-  };
-
-  // Check if timetable is valid (no errors)
-  const isTimetableValid = (): boolean => {
-    return validationErrors.length === 0;
-  };
-
   return {
     // State
     subjects,
@@ -102,7 +89,6 @@ export const useTimetable = () => {
     days,
     periodsPerDay,
     timetableEntries,
-    validationErrors,
 
     // Actions
     initializeTimetable,
@@ -121,7 +107,5 @@ export const useTimetable = () => {
     getSubjectById,
     getTeacherById,
     isSlotOccupied,
-    getErrorsForEntry,
-    isTimetableValid,
   };
 };

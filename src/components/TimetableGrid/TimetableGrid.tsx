@@ -12,11 +12,12 @@ import {
   useDraggable,
   useDroppable,
 } from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
-import { AnimatePresence } from "framer-motion";
 import { useTimetableStore } from "../../store";
 import { DAYS, PERIODS } from "../../constants";
 import { TimetableEntry } from "../../types";
+import EditTimetableEntryDialog from "./EditTimetableEntryDialog";
+import { CirclePlus, Grip } from "lucide-react";
+import { toast } from "sonner";
 
 const TimetableGrid = () => {
   const {
@@ -25,14 +26,15 @@ const TimetableGrid = () => {
     teachers,
     moveTimetableEntry,
     validateTimetable,
-    validationErrors,
   } = useTimetableStore();
 
-  // Configure sensors for drag detection
+  // Configure sensors for drag detection with delay to distinguish between drag and click
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        // This delay helps distinguish between a click and a drag
+        delay: 100,
+        tolerance: 5,
       },
     }),
     useSensor(KeyboardSensor)
@@ -44,6 +46,16 @@ const TimetableGrid = () => {
     null
   );
 
+  // Dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<
+    TimetableEntry | undefined
+  >(undefined);
+  const [selectedDay, setSelectedDay] = useState<string | undefined>(undefined);
+  const [selectedPeriod, setSelectedPeriod] = useState<number | undefined>(
+    undefined
+  );
+
   // Helper to find subject and teacher for an entry
   const getEntryDetails = useCallback(
     (entry: TimetableEntry) => {
@@ -53,6 +65,22 @@ const TimetableGrid = () => {
     },
     [subjects, teachers]
   );
+
+  // Open dialog for editing an entry
+  const openEditDialog = (entry: TimetableEntry) => {
+    setSelectedEntry(entry);
+    setSelectedDay(undefined);
+    setSelectedPeriod(undefined);
+    setDialogOpen(true);
+  };
+
+  // Open dialog for adding a new entry
+  const openAddDialog = (day: string, period: number) => {
+    setSelectedEntry(undefined);
+    setSelectedDay(day);
+    setSelectedPeriod(period);
+    setDialogOpen(true);
+  };
 
   // Handle drag start - track the dragged item
   const handleDragStart = (event: DragStartEvent) => {
@@ -91,8 +119,70 @@ const TimetableGrid = () => {
     const [newDay, newPeriodStr] = droppableId.split("-");
     const newPeriod = parseInt(newPeriodStr, 10);
 
+    // Find the entry we're moving
+    const entryToMove = timetableEntries.find((entry) => entry.id === entryId);
+    if (!entryToMove) return;
+
+    // Check if the target slot is empty
+    const isSlotEmpty = !timetableEntries.some(
+      (entry) =>
+        entry.id !== entryId &&
+        entry.day === newDay &&
+        entry.period === newPeriod
+    );
+
+    if (!isSlotEmpty) {
+      toast.error("This slot is already occupied");
+      playDragSound("cancel");
+      return;
+    }
+
+    // Check teacher availability
+    const teacher = teachers.find((t) => t.id === entryToMove.teacherId);
+    const isTeacherAvailable = teacher?.availableSlots.some(
+      (slot) => slot.day === newDay && slot.period === newPeriod
+    );
+
+    if (teacher) {
+      // Find nearby available slots if this one isn't available
+      if (!isTeacherAvailable) {
+        // Get slots for the same day
+        const slotsOnSameDay = teacher.availableSlots
+          .filter((slot) => slot.day === newDay)
+          .map((slot) => slot.period)
+          .sort((a, b) => a - b);
+
+        // Get slots for all days
+        const nearbyDays = DAYS.slice(
+          Math.max(0, DAYS.indexOf(newDay) - 1),
+          Math.min(DAYS.length, DAYS.indexOf(newDay) + 2)
+        );
+      }
+    }
+
+    if (!isTeacherAvailable) {
+      // Simplified error toast
+      const teacherName = teacher?.name || "Selected teacher";
+      toast.error(`${teacherName} is not available for this slot.`);
+
+      playDragSound("cancel");
+      return;
+    }
+
     // Execute the move
     moveTimetableEntry(entryId, newDay, newPeriod);
+
+    // Show success toast
+    const movedSubject = subjects.find((s) => s.id === entryToMove.subjectId);
+    const movedTeacher = teachers.find((t) => t.id === entryToMove.teacherId);
+    toast.success(
+      <div>
+        <p>
+          Successfully moved <strong>{movedSubject?.name}</strong>
+        </p>
+        <p className="text-xs opacity-80">Teacher: {movedTeacher?.name}</p>
+      </div>
+    );
 
     // Validate the timetable after move
     validateTimetable();
@@ -107,16 +197,6 @@ const TimetableGrid = () => {
     // For now we just have the function structure
   };
 
-  const isSlotHighlighted = useCallback(
-    (day: string, period: number) => {
-      // Check if any validation errors reference this slot
-      return validationErrors.some((error) =>
-        error.message.includes(`${day}, period ${period}`)
-      );
-    },
-    [validationErrors]
-  );
-
   // Check if a slot is a valid drop target
   const isValidDropTarget = useCallback(
     (day: string, period: number) => {
@@ -126,10 +206,13 @@ const TimetableGrid = () => {
       const entry = timetableEntries.find((e) => e.id === activeId);
       if (!entry) return true;
 
-      // Check if the target slot already has an entry
+      // Only check if the target slot already has an entry
       const hasExistingEntry = timetableEntries.some(
         (e) => e.day === day && e.period === period && e.id !== activeId
       );
+
+      // Always allow dropping on empty slots, regardless of teacher availability
+      // Teacher availability will be checked in handleDragEnd
 
       return !hasExistingEntry;
     },
@@ -166,7 +249,7 @@ const TimetableGrid = () => {
     if (!subject || !teacher) {
       return (
         <div
-          className="p-3 rounded-lg border bg-muted shadow-sm"
+          className="p-3 rounded-lg border bg-gray-100 dark:bg-muted text-gray-700 dark:text-gray-300 shadow-sm"
           data-id={entry.id}
         >
           <div className="text-xs">Missing data</div>
@@ -179,14 +262,17 @@ const TimetableGrid = () => {
 
     return (
       <div
-        className={`p-2 sm:p-3 rounded-lg border cursor-grab active:cursor-grabbing ${
-          isDragging ? "shadow-md opacity-90" : "shadow-sm hover:shadow-md"
+        onClick={() => openEditDialog(entry)}
+        className={`p-2 sm:p-3 rounded-lg border cursor-pointer ${
+          isDragging
+            ? "shadow-md opacity-95 ring-2 ring-blue-400/50 dark:ring-blue-600/50"
+            : "shadow-sm hover:shadow-md hover:brightness-105"
         } ${colorClasses} transition-all duration-200`}
         data-id={entry.id}
       >
         <div className="w-full h-full">
           <div className="font-semibold text-sm">{subject.name}</div>
-          <div className="text-xs mt-1 opacity-80">{teacher.name}</div>
+          <div className="text-xs mt-1 opacity-90">{teacher.name}</div>
         </div>
       </div>
     );
@@ -202,33 +288,97 @@ const TimetableGrid = () => {
     period: number;
     children: React.ReactNode;
   }) => {
-    const isHighlighted = isSlotHighlighted(day, period);
-    const isValidTarget = isValidDropTarget(day, period);
+    // Always allow drop, but check if teacher is available for visual feedback
     const droppableId = `${day}-${period}`;
 
     const { isOver, setNodeRef } = useDroppable({
       id: droppableId,
-      disabled: !isValidTarget,
+      // We no longer disable dropping based on teacher availability
     });
 
-    // Simplified styling with minimal transitions
+    // Check if teacher is available for this slot (for visual indication only)
+    const isTeacherAvailable = useCallback(() => {
+      if (!activeId) return true;
+
+      const entry = timetableEntries.find((e) => e.id === activeId);
+      if (!entry) return true;
+
+      const teacher = teachers.find((t) => t.id === entry.teacherId);
+      return teacher?.availableSlots.some(
+        (slot) => slot.day === day && slot.period === period
+      );
+    }, [activeId, day, period]);
+
+    // Check if slot is empty
+    const isSlotEmpty = !children;
+    const canDrop = isSlotEmpty;
+    const teacherAvailable = isTeacherAvailable();
+
+    // Handle click on empty cell to add new entry
+    const handleCellClick = () => {
+      if (!children) {
+        openAddDialog(day, period);
+      }
+    };
+
     return (
       <div
         ref={setNodeRef}
-        className={`h-full w-full rounded-lg relative ${
-          isOver && isValidTarget
-            ? "bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-700"
-            : isOver && !isValidTarget
-            ? "bg-red-50 dark:bg-red-900/20 border border-red-300 dark:border-red-700"
+        onClick={handleCellClick}
+        className={`h-full w-full rounded-lg relative transition-colors duration-150 ${
+          isOver && canDrop && teacherAvailable
+            ? "bg-blue-50/70 dark:bg-blue-900/30 border-2 border-blue-300/80 dark:border-blue-600"
+            : isOver && canDrop && !teacherAvailable
+            ? "bg-yellow-50/70 dark:bg-yellow-900/30 border-2 border-yellow-300/80 dark:border-yellow-600"
+            : isOver && !canDrop
+            ? "bg-red-50/70 dark:bg-red-900/30 border-2 border-red-300/80 dark:border-red-600"
+            : !children
+            ? "border border-dashed border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600"
             : "border border-transparent"
+        } ${
+          !children
+            ? "cursor-pointer hover:bg-gray-50/80 dark:hover:bg-gray-800/30"
+            : ""
         }`}
       >
         {children}
 
-        {/* Simpler drop indicator for empty cells */}
-        {!children && isOver && isValidTarget && (
+        {/* Drop indicator for empty cells */}
+        {!children && isOver && canDrop && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30"></div>
+            <div className="flex flex-col items-center">
+              <div
+                className={`w-12 h-12 rounded-full ${
+                  teacherAvailable
+                    ? "bg-blue-100 dark:bg-blue-800/40"
+                    : "bg-yellow-100 dark:bg-yellow-800/40"
+                } flex items-center justify-center`}
+              >
+                <CirclePlus
+                  className={`w-7 h-7 ${
+                    teacherAvailable
+                      ? "text-blue-600 dark:text-blue-300"
+                      : "text-yellow-600 dark:text-yellow-300"
+                  }`}
+                />
+              </div>
+              <div
+                className={`text-xs mt-2 ${
+                  teacherAvailable
+                    ? "text-blue-700 dark:text-blue-300"
+                    : "text-yellow-700 dark:text-yellow-300"
+                } font-medium`}
+              >
+                {teacherAvailable ? "Drop here" : "Teacher unavailable"}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Plus icon for empty cells */}
+        {!children && !isOver && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none group-hover:opacity-70 opacity-40 transition-opacity">
+            <CirclePlus className="w-6 h-6 text-gray-400 dark:opacity-30" />
           </div>
         )}
       </div>
@@ -243,10 +393,11 @@ const TimetableGrid = () => {
         data: entry,
       });
 
-    // Simpler transform with no rotation or scaling
+    // Transform with subtle scale effect
     const style = transform
       ? {
           transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+          zIndex: isDragging ? 10 : "auto",
         }
       : undefined;
 
@@ -254,10 +405,15 @@ const TimetableGrid = () => {
       <div
         ref={setNodeRef}
         style={style}
-        {...listeners}
-        {...attributes}
-        className={isDragging ? "z-10" : ""}
+        className={`relative ${isDragging ? "z-10" : ""}`}
       >
+        <div
+          className="absolute -top-1 -right-1 z-20 w-6 h-6 cursor-grab active:cursor-grabbing bg-white dark:bg-gray-800 shadow-sm rounded-md flex items-center justify-center transition-colors border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+          {...listeners}
+          {...attributes}
+        >
+          <Grip className="w-3.5 h-3.5 text-gray-600 dark:text-gray-400" />
+        </div>
         <Card entry={entry} />
       </div>
     );
@@ -272,7 +428,7 @@ const TimetableGrid = () => {
         onDragEnd={handleDragEnd}
       >
         <div className="overflow-x-auto rounded-xl shadow-lg">
-          <table className="w-full min-w-full border-collapse bg-card table-fixed">
+          <table className="w-full min-w-full border-collapse bg-white dark:bg-card table-fixed">
             <colgroup>
               <col className="w-16" />
               {DAYS.map((day, index) => (
@@ -280,12 +436,12 @@ const TimetableGrid = () => {
               ))}
             </colgroup>
             <thead>
-              <tr className="bg-muted">
-                <th className="p-4 border border-border w-16 rounded-tl-xl"></th>
+              <tr className="bg-gray-50 dark:bg-muted">
+                <th className="p-4 border border-gray-200 dark:border-border w-16 rounded-tl-xl"></th>
                 {DAYS.map((day, index) => (
                   <th
                     key={day}
-                    className={`p-3 sm:p-4 border border-border font-medium text-foreground ${
+                    className={`p-3 sm:p-4 border border-gray-200 dark:border-border font-medium text-gray-700 dark:text-foreground ${
                       index === DAYS.length - 1 ? "rounded-tr-xl" : ""
                     }`}
                   >
@@ -297,7 +453,7 @@ const TimetableGrid = () => {
             <tbody>
               {PERIODS.map((period, rowIndex) => (
                 <tr key={period}>
-                  <td className="p-3 sm:p-4 border border-border font-medium text-center bg-muted">
+                  <td className="p-3 sm:p-4 border border-gray-200 dark:border-border font-medium text-center bg-gray-50 dark:bg-muted text-gray-700 dark:text-gray-300">
                     <div>{period}</div>
                   </td>
                   {DAYS.map((day, colIndex) => {
@@ -306,14 +462,7 @@ const TimetableGrid = () => {
                       (e) => e.day === day && e.period === period
                     );
 
-                    // Style classes based on validation and drag status
-                    const isHighlighted = isSlotHighlighted(day, period);
-
-                    const cellClasses = `p-2 border border-border h-24 sm:h-28 ${
-                      isHighlighted
-                        ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                        : "bg-card"
-                    } ${
+                    const cellClasses = `p-2 border border-gray-200 dark:border-border h-24 sm:h-28 bg-white dark:bg-card ${
                       // Bottom corners
                       rowIndex === PERIODS.length - 1 && colIndex === 0
                         ? "rounded-bl-xl"
@@ -339,11 +488,24 @@ const TimetableGrid = () => {
           </table>
         </div>
 
-        {/* Simpler drag overlay with no rotation */}
-        <DragOverlay adjustScale={false}>
-          {activeDragData && <Card entry={activeDragData} />}
+        {/* Drag overlay with simplified appearance */}
+        <DragOverlay adjustScale={false} zIndex={1000}>
+          {activeDragData && (
+            <div className="opacity-95 shadow-sm">
+              <Card entry={activeDragData} />
+            </div>
+          )}
         </DragOverlay>
       </DndContext>
+
+      {/* Edit dialog */}
+      <EditTimetableEntryDialog
+        isOpen={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        entry={selectedEntry}
+        day={selectedDay}
+        period={selectedPeriod}
+      />
     </div>
   );
 };

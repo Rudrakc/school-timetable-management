@@ -22,9 +22,3 @@ export interface TimetableEntry {
   day: string;
   period: number;
 }
-
-export interface ValidationError {
-  id: string;
-  message: string;
-  severity: "error" | "warning";
-}
